@@ -1,5 +1,6 @@
 import asyncio
 import fcntl
+import json
 import logging
 import os
 import time
@@ -9,12 +10,13 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
 
+import numpy as np
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import data, korea, models
+from . import data, decision, korea, models
 from .data import RULES
 from .experiments import KINDS, run_experiment
 from .metrics import metric, service_summary, stamp
@@ -42,6 +44,8 @@ class ExperimentRequest(BaseModel):
     changed: int = Field(26, ge=2, le=104)
     recovery: int = Field(26, ge=1, le=104)
     factor: float | None = Field(None, gt=0, le=5, description="생략하면 rules.json 기본값")
+    prices: Annotated[list[Annotated[float, Field(gt=0, allow_inf_nan=False)]], Field(min_length=13, max_length=156)] | None = Field(
+        None, description="직접 넣은 미래 주간 가격(마지막 실제 주 다음부터, 13~156주). 주면 kind는 무시하고 이 가격을 한 주씩 흘려보냄")
 
 
 class PredictRequest(BaseModel):
@@ -317,6 +321,50 @@ def create_app(root=None, loading_mode=None, job_runner=None):
         ops.event(result["id"], "predict", "succeeded")
         return result
 
+    @app.get("/api/decision")
+    def purchase_decision():
+        """Buy / as usual / hold from the serving model's forecast on the latest weeks (not stored as a prediction),
+        plus the signal's track record on the held-out test weeks of the newest fully trained model."""
+        version = ops.active()
+        if version is None:
+            raise HTTPException(409, "운영 모델이 없습니다. 학습하면 게이트를 통과한 모델이 자동 배포됩니다.")
+        rows = [r for r in ops.dataset()["rows"] if r["available_on"] <= date.today().isoformat()]
+        last = rows[-models.SEQUENCE:]
+        if len(last) < models.SEQUENCE or any((date.fromisoformat(b["date"])-date.fromisoformat(a["date"])).days != rows[0]["interval_days"] for a, b in zip(last, last[1:])):
+            raise HTTPException(422, "최근 입력에 주간 결측 구간이 있습니다")
+        current = last[-1]["midpoint"]
+        estimates = serve(version, [r["midpoint"] for r in last])
+        decided = decision.signal(current, estimates["prediction"])
+        registry = store.read("models")
+        reference = next((m for m in reversed(registry) if m.get("training_mode") == "full" and not m.get("from_experiment")
+                          and m["gate"]["passed"]), None)
+        record = None
+        if reference:
+            test = json.loads((root/"models"/reference["version"]/"evaluation.json").read_text())["test"]
+            record = decision.track_record([dict(current=s["x"][-1][0], forecast=s["prediction"], actual=s["actual"],
+                                                 issued_at=s["issued_at"], target_date=s["target_date"]) for s in test])
+            record.update(model=reference["version"], start=test[0]["issued_at"], end=test[-1]["target_date"])
+        # Forecasts already issued whose 4-week answer is still in the future (the newest one is today's advice).
+        recent = [rows[len(rows)-models.SEQUENCE-k:len(rows)-k] for k in range(4, -1, -1)]
+        ahead = serving_bundle(version).predict_many([[r["midpoint"] for r in window] for window in recent])
+        upcoming = [dict(decision.signal(window[-1]["midpoint"], float(forecast)), issued_at=window[-1]["available_on"],
+                         current=window[-1]["midpoint"], forecast=float(forecast),
+                         target_date=(date.fromisoformat(window[-1]["available_on"])+timedelta(days=28)).isoformat())
+                    for window, forecast in zip(recent, ahead)]
+        returns = np.diff(np.log([r["midpoint"] for r in rows]))*100
+        active = next(m for m in reversed(registry) if m["version"] == version)
+        caution = [a for a in store.read("alerts") if a["kind"] in ("input_drift", "performance") and a["status"] == "open"]
+        latest_alerts = {a["key"]: a for a in caution}
+        return dict(version=version, from_experiment=active.get("from_experiment"), experiment_kind=active.get("experiment_kind"),
+                    training_mode=active.get("training_mode"), unit=rows[0]["unit"], as_of=last[-1]["date"],
+                    current=current, forecast=estimates["prediction"],
+                    target_date=(date.fromisoformat(last[-1]["available_on"])+timedelta(days=28)).isoformat(),
+                    korea=korea_view(estimates), korea_now=korea.estimate(current) if rows[0]["unit"] == "EUR/100kg" else None,
+                    rules=RULES["decision"], track_record=record, upcoming=upcoming,
+                    history=[dict(date=r["date"], price=r["midpoint"]) for r in rows[-160:]],
+                    return_band=dict(low_pct=float(np.percentile(returns, .5)), high_pct=float(np.percentile(returns, 99.5))),
+                    caution=list(latest_alerts.values()), **decided)
+
     @app.get("/api/predictions")
     def predictions():
         return store.read("predictions")[-100:]
@@ -334,7 +382,7 @@ def create_app(root=None, loading_mode=None, job_runner=None):
         if ops.active() is None:
             raise HTTPException(409, "운영 모델이 없습니다: 먼저 학습해 운영 모델을 만든 뒤 실험하세요")
         params = dict(epochs=request.epochs, normal=request.normal, changed=request.changed,
-                      recovery=request.recovery, factor=request.factor, kind=request.kind)
+                      recovery=request.recovery, factor=request.factor, kind=request.kind, prices=request.prices)
         return ops.submit("experiment", lambda job_id: run_experiment(ops, job_id, rows, **params),
                           spec=dict(type="experiment", dataset_version=ops.dataset()["version"], params=params))
 

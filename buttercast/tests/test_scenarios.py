@@ -61,6 +61,32 @@ def test_three_situations_normal_watch_finetune(tmp_path):
             assert result["retraining"] == [] and result["normal_alarm_observations"] == 0
 
 
+def test_buyer_advice_and_typed_future_prices(tmp_path):
+    """구매 담당자: 지금 구매/평소대로/보류 + 과거 성적 / 운영자: 직접 넣은 미래 가격으로 감시·파인튜닝·판단 확인."""
+    with TestClient(create_app(tmp_path)) as client:
+        version = first_deploy(client)
+        before = len(client.get("/api/predictions").json())
+        advice = client.get("/api/decision").json()
+        assert advice["version"] == version and advice["signal"] in ("buy", "normal", "hold")
+        upcoming = advice["upcoming"]  # issued, answer still ahead; the newest is today's advice
+        assert len(upcoming) == 5 and all(r["target_date"] > advice["as_of"] for r in upcoming)
+        assert upcoming[-1]["forecast"] == pytest.approx(advice["forecast"]) and upcoming[-1]["signal"] == advice["signal"]
+        record = advice["track_record"]
+        assert record["model"] == version and record["weeks"] > 200
+        assert record["signals"] == record["summary"]["buy"]["count"]+record["summary"]["hold"]["count"]
+        assert advice["korea"]["krw_per_kg"] > 0 and advice["return_band"]["low_pct"] < 0 < advice["return_band"]["high_pct"]
+        assert len(client.get("/api/predictions").json()) == before  # advice is not an operational prediction
+        last = client.get("/api/datasets").json()["rows"][-1]["midpoint"]
+        typed = [round(last*(1+.01*((-1)**k)), 2) for k in range(26)]
+        job = client.post("/api/experiments", json={"prices": typed}).json()
+        assert wait(client, job["id"], timeout=600)["status"] == "succeeded"
+        result = client.get(f"/api/experiments/{job['id']}").json()
+        assert result["kind"] == "custom" and result["params"] == {"weeks": 26} and result["expected_level"] is None
+        assert [step["price"] for step in result["steps"]] == typed and set(result["level_weeks"]) == {"custom"}
+        assert set(result["final_advice"]) == {"fixed", "adaptive"} and set(result["advice"]) == {"fixed", "adaptive"}
+        assert client.get("/api/datasets").json()["rows"][-1]["midpoint"] == last  # typed prices never enter real data
+
+
 def test_operator_drift_response_retrains_promotes_and_rolls_back(tmp_path):
     """운영자: 드리프트 주입 → 경보 → 파인튜닝 → 게이트 → 운영 저장소로 들어와 자동 승격 → 이전 모델 다시 선택."""
     with TestClient(create_app(tmp_path)) as client:

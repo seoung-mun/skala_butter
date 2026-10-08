@@ -14,6 +14,7 @@ def test_api_real_data_empty_models_and_observation_exclusion(tmp_path):
             assert metrics["service"]["request_count"]["value"] == 0
             assert metrics["model"]["rmse"]["value"] is None
         assert client.post("/api/predict").status_code == 409
+        assert client.get("/api/decision").status_code == 409  # no serving model → no advice yet
         assert client.get("/api/metrics").json()["service"]["request_count"]["value"] == 1
 
 
@@ -46,6 +47,8 @@ def test_generated_experiments_are_rejected_without_writing_results(tmp_path):
     with TestClient(create_app(tmp_path)) as client:
         result = client.post("/api/experiments", json={"kind": "relation"})
         assert result.status_code == 422
+        for prices in ([450.0]*12, [450.0]*12+[0.0]):  # too short / not positive
+            assert client.post("/api/experiments", json={"prices": prices}).status_code == 422
         assert client.get("/api/experiments").json() == []
         assert client.get("/api/metrics").json()["service"]["request_count"]["value"] == 0
 

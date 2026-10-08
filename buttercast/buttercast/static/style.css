@@ -47,3 +47,42 @@ textarea{width:100%;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;pa
 .chip{display:inline-block;background:#efede2;border-radius:6px;padding:3px 8px;font-size:10px;font-family:ui-monospace,Menlo,monospace}
 .stage-dot{font-size:11px;font-weight:650;color:var(--muted)}.stage-dot:before{content:'●';margin-right:5px}.stage-dot.green{color:var(--green)}.stage-dot.red{color:var(--red)}.stage-dot.amber{color:var(--amber)}
 button.danger{background:#c9604f;border-color:#b5513f;color:#fff}
+/* Pipeline stages follow real state: done green, running blue, failed red, not reached grey. */
+.stage .stage-icon{background:#f1f0ea;color:#a3a69a;border-color:var(--line)}
+.stage.done .stage-icon{background:#4f8a6c;color:#fff;border-color:#3f7359;box-shadow:0 2px 6px #3f735933}
+.stage.active .stage-icon{background:#3f6f98;color:#fff;border-color:#335c80;animation:stage-pulse 1.2s ease-in-out infinite}
+.stage.error .stage-icon{background:#b5524f;color:#fff;border-color:#97413f}
+.stage.done{color:#2f6249;font-weight:600}.stage.active{color:var(--blue)}.stage.error{color:var(--red)}
+.stage.done:not(:last-child):after{color:var(--green)}
+@keyframes stage-pulse{50%{box-shadow:0 0 0 6px #3f6f9833}}
+@media(prefers-reduced-motion:reduce){.stage.active .stage-icon{animation:none}}
+/* Purchase advice: the signal colour is the page's one loud element (buy green, hold orange, as usual neutral). */
+.decision{--tone:#6b746d;--tone-bg:var(--paper);border:1px solid var(--line);border-left:6px solid var(--tone);background:var(--tone-bg);border-radius:var(--radius);padding:24px 26px;margin-bottom:20px;display:grid;grid-template-columns:minmax(220px,.8fr) 2fr;gap:18px 32px}
+.decision.buy{--tone:#2f7a51;--tone-bg:#f1f8f2}.decision.hold{--tone:#bb6420;--tone-bg:#fdf3ea}.decision.normal{--tone:#56677a;--tone-bg:var(--paper)}
+.decision-label{font-size:40px;font-weight:800;letter-spacing:-1.5px;color:var(--tone);line-height:1.1}
+.decision-main p{color:var(--ink);margin-top:10px;font-size:13px}
+.decision-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
+.decision-facts>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.decision-facts span{font-size:11px;color:var(--muted)}
+.decision-facts b{font-size:22px;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.decision-facts b.evidence{font-size:13px;font-weight:500;letter-spacing:0;line-height:1.6}
+.decision-facts small{font-size:11px;color:var(--muted)}
+.decision-meta{grid-column:1/-1;font-size:11px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+.decision.flash{animation:decision-flash 1.2s ease-in-out 2}
+@keyframes decision-flash{50%{box-shadow:0 0 0 6px #315f8733}}
+@media(prefers-reduced-motion:reduce){.decision.flash{animation:none}}
+@media(max-width:760px){.decision{grid-template-columns:1fr}.decision-label{font-size:32px}}
+.signal-chip{display:inline-block;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px}
+.signal-chip.buy{background:#dcefe2;color:#2f7a51}.signal-chip.hold{background:#fae3cf;color:#a5551a}.signal-chip.normal{background:#ecebe3;color:#5f6a60}
+.banner button{margin-left:auto;font-size:11px;padding:6px 10px}
+.kpi-value.good{color:var(--green)}
+.legend i{box-sizing:border-box}
+.check-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.mode-tabs{margin-bottom:14px}
+textarea#stream-prices{width:100%;min-height:120px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid #ded7bf;border-radius:8px;padding:10px;background:var(--paper);color:var(--ink)}
+.advice-pair{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:6px}
+.advice-card{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:12px;padding:14px 18px;min-width:200px;background:var(--paper)}
+.advice-card b{font-size:22px;font-variant-numeric:tabular-nums}.advice-card small{color:var(--muted);font-size:11px}
+.advice-pair .arrow{color:var(--muted);font-size:20px}
+.decision-facts .evidence b{font-size:inherit;letter-spacing:0;font-weight:700}
+.drift-lead{font-size:13px;color:var(--ink);margin-bottom:12px;line-height:1.8}

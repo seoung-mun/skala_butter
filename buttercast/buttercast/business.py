@@ -64,7 +64,7 @@ def compare(dates, prices, fixed, adaptive, rules=None):
 def sensitivity(dates, prices, forecasts):
     """Same forecasts under alternative assumptions: shows how much the conclusion depends on them."""
     rows = []
-    for trigger in (5.0, 8.0, 10.0):
+    for trigger in (2.0, 3.0, 5.0):
         for share in (.25, .5, .75):
             rules = dict(RULES["business"], prebuy_trigger_pct=trigger, prebuy_share=share)
             usage = weekly_usage(dates, rules)

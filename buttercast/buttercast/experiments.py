@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 import numpy as np
 
-from . import business, models
+from . import business, decision, models
 from .data import RULES, version
 from .metrics import accuracy, stamp
 from .operations import Operations
@@ -39,6 +39,19 @@ def virtual_future(rows, weeks):
     for _ in range(weeks):
         price, day = price*math.exp(float(rng.choice(recent))), day+timedelta(days=7)
         future.append(dict(last, date=day.isoformat(), available_on=(day+lag).isoformat(), midpoint=price, synthetic=True))
+    return future
+
+
+def custom_future(rows, prices):
+    """Caller-typed weekly prices after the last real observation (the simulation's "이어서 넣기"). Marked synthetic."""
+    last = rows[-1]
+    lag = date.fromisoformat(last["available_on"])-date.fromisoformat(last["date"])
+    day, future = date.fromisoformat(last["date"]), []
+    for price in prices:
+        if not math.isfinite(price) or price <= 0:
+            raise ValueError(f"입력 가격은 유한 양수여야 합니다: {price}")
+        day += timedelta(days=7)
+        future.append(dict(last, date=day.isoformat(), available_on=(day+lag).isoformat(), midpoint=float(price), synthetic=True))
     return future
 
 
@@ -79,18 +92,28 @@ def replay_inputs(rows, start, normal, changed, recovery, factor=None, kind="lev
 
 
 def run_experiment(parent_ops, experiment_id, rows, epochs=20, start=None, normal=13, changed=26, recovery=26,
-                   factor=None, kind="level_ramp"):
+                   factor=None, kind="level_ramp", prices=None):
     """start=None (the app): the model serving now meets a virtual future after the last real week.
     start=<row index> (buttercast.sensitivity): historical replay with a model trained up to that week.
     Either way the price stream lives in its own store so made-up prices never enter the real dataset;
-    every model it trains is registered in the main store at the end (see Pipeline.adopt_experiment)."""
+    every model it trains is registered in the main store at the end (see Pipeline.adopt_experiment).
+    prices=[...] (live only): the caller's own future weeks replace the generated ones (kind "custom")."""
     live = start is None
+    if prices is not None and not live:
+        raise ValueError("직접 입력 가격은 지금 운영 모델에서 시작하는 실험에서만 씁니다")
     base = parent_ops.active() if live else None
     if live and base is None:
         raise ValueError("운영 모델이 없습니다: 먼저 학습해 운영 모델을 만든 뒤 실험하세요")
-    if live:
-        start, rows = len(rows), rows+virtual_future(rows, normal+changed+recovery)
-    stream = replay_inputs(rows, start, normal, changed, recovery, factor, kind)
+    if prices is not None:
+        kind, normal, changed, recovery = "custom", 0, len(prices), 0
+        params = dict(weeks=len(prices))
+        start, rows = len(rows), rows+custom_future(rows, prices)
+        stream = [dict(row=row, phase="custom", original_price=row["midpoint"], injected=True) for row in rows[start:]]
+    else:
+        params = injection_params(kind, factor)
+        if live:
+            start, rows = len(rows), rows+virtual_future(rows, normal+changed+recovery)
+        stream = replay_inputs(rows, start, normal, changed, recovery, factor, kind)
     store = Store(parent_ops.store.root / "experiments" / experiment_id)
     ops = Operations(store)
     pipeline = Pipeline(ops, experiment_id=experiment_id)
@@ -120,7 +143,7 @@ def run_experiment(parent_ops, experiment_id, rows, epochs=20, start=None, norma
 
     try:
         ops.log("INFO", f"experiment {experiment_id} kind={kind} start={rows[start]['date']} base={base or 'trained here'} "
-                        f"normal={normal} changed={changed} recovery={recovery} params={injection_params(kind, factor)}")
+                        f"normal={normal} changed={changed} recovery={recovery} params={params}")
         dataset()
         if live:
             initial = base
@@ -139,6 +162,16 @@ def run_experiment(parent_ops, experiment_id, rows, epochs=20, start=None, norma
             if ops.active() != initial:
                 pipeline.deploy(initial, "baseline_degraded", acknowledge_degraded=True)
         fixed = ops.bundle(initial)
+        if prices is not None:
+            # A model that has been serving already has a forecast history. Recreate the forecasts it would have issued
+            # on the last real weeks, so the performance window is full from the first typed week instead of starting
+            # empty and staying blind for 13 + 4 weeks.
+            for end in range(start-18, start):
+                window = rows[end-models.SEQUENCE+1:end+1]
+                issued = window[-1]["available_on"]
+                store.append("predictions", dict(version=initial, issued_at=issued, horizon_days=28, inference_ms=0.0,
+                                                 target_date=(date.fromisoformat(issued)+timedelta(days=28)).isoformat(),
+                                                 backfill=True, **fixed.predict([r["midpoint"] for r in window])))
         records, triggers, detection_index = [], [], None
         for index, item in enumerate(stream):
             visible.append(item["row"])
@@ -202,26 +235,37 @@ def run_experiment(parent_ops, experiment_id, rows, epochs=20, start=None, norma
         scores = {name: accuracy([observations[record["target_date"]]["midpoint"] for record in scored],
                                  [record[name] for record in scored], unit=visible[0]["unit"])
                   for name in ("fixed", "adaptive")}
-        dates, prices = [r["date"] for r in records], [r["price"] for r in records]
+        dates, stream_prices = [r["date"] for r in records], [r["price"] for r in records]
+        # Purchase advice along the run: each week's signal from the fixed and the operating model, scored on the
+        # weeks whose 4-week answer arrived inside the run; and the advice each would give on the final week.
+        advice = {name: decision.track_record([dict(current=record["price"], forecast=record[name], date=record["date"],
+                                                    actual=observations[record["target_date"]]["midpoint"]) for record in scored])
+                  for name in ("fixed", "adaptive")}
+        for name in advice:
+            advice[name].pop("judged")
+        final = {name: dict(decision.signal(records[-1]["price"], records[-1][name]), forecast=records[-1][name],
+                            model=initial if name == "fixed" else before_rollback) for name in ("fixed", "adaptive")}
         normal_steps = [record for record in records if record["phase"] == "normal"]
         tokens = [row["token"] for row in store.read("retrain_candidates")]
-        result = dict(id=experiment_id, kind=kind, params=injection_params(kind, factor), isolated=True,
-                      source="EU actual prices" + ("" if kind == "none" else " + labelled injection"),
+        phases = list(dict.fromkeys(record["phase"] for record in records))
+        result = dict(id=experiment_id, kind=kind, params=params, isolated=True,
+                      source="caller-typed future prices" if kind == "custom" else
+                      "EU actual prices" + ("" if kind == "none" else " + labelled injection"),
                       policy="production: input drift → WARN only; WAPE streak ≥ retrain_consecutive → fine-tune → gate",
-                      expected_level=EXPECTED_LEVEL[kind],
+                      expected_level=EXPECTED_LEVEL.get(kind),
                       observed_level=max(record["level"] for record in records if record["phase"] != "normal"),
                       level_weeks={phase: [sum(r["level"] == lv for r in records if r["phase"] == phase) for lv in (0, 1, 2)]
-                                   for phase in ("normal", "changed", "recovery")},
+                                   for phase in phases},
                       initial_model=initial, initial_gate=next(m for m in store.read("models") if m["version"] == initial)["gate"],
                       replaced_model=before_rollback, rolled_back_model=ops.active(),
                       normal_observations=len(normal_steps),
                       normal_alarm_observations=sum(record["level"] > 0 for record in normal_steps),
-                      detection_delay_observations=detection_index, injected_observations=changed if kind != "none" else 0,
+                      detection_delay_observations=detection_index, injected_observations=changed if kind != "none" else 0, advice=advice, final_advice=final,
                       retraining_job_id=triggers[0]["job_id"] if triggers else None, retraining=triggers,
                       duplicate_observation_verified=True, duplicate_training_verified=bool(triggers) and len(tokens) == len(set(tokens)),
                       corruption_blocked=corruption_blocked, scores=scores, evaluated_predictions=len(scored),
-                      business=business.compare(dates, prices, [r["fixed"] for r in records], [r["adaptive"] for r in records]),
-                      sensitivity=business.sensitivity(dates, prices, [r["adaptive"] for r in records]),
+                      business=business.compare(dates, stream_prices, [r["fixed"] for r in records], [r["adaptive"] for r in records]),
+                      sensitivity=business.sensitivity(dates, stream_prices, [r["adaptive"] for r in records]),
                       final_input_alarm=records[-1]["alarm"], recovery_observations=recovery,
                       jobs=ops.jobs(), deployments=store.read("deployments"), alerts=store.read("alerts"),
                       aiops_log=(store.root / "aiops.log").read_text(encoding="utf-8").splitlines(),
