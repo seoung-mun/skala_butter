@@ -319,8 +319,8 @@ function driftResult(r, d) {
   const past = d.dataset.rows.filter(row => row.date < steps[0].date).slice(-26), off = past.length;
   const dates = [...past.map(row => row.date), ...steps.map(s => s.date)], gap = () => past.map(() => NaN);
   const position = new Map(dates.map((x, i) => [x, i])), atTarget = dates.map(() => NaN);
-  // Team choice: each 4-week forecast is drawn at the week it was issued (not at its target week); the legend says so.
-  steps.forEach(s => { const i = position.get(s.date); if (i !== undefined) atTarget[i] = s.adaptive; });
+  // Each forecast is drawn at the week it was for (its target), so it lines up with the price it tried to hit.
+  steps.forEach(s => { const i = position.get(s.target_date); if (i !== undefined) atTarget[i] = s.adaptive; });
   const joined = values => [...past.map((_, i) => i === off-1 ? past[i].midpoint : NaN), ...values];
   const changedIdx = steps.map((s, i) => s.phase === 'changed' ? i+off : -1).filter(i => i >= 0);
   const bands = changedIdx.length ? [[changedIdx[0], changedIdx.at(-1)]] : [];
@@ -330,7 +330,7 @@ function driftResult(r, d) {
       {name:custom ? '가상 미래 가격 (넣은 값)' : '가상 미래 가격 (주입 후)', values:joined(steps.map(s => s.price))},
       // The built-in situations inject into a generated future; typed prices have no "before" to compare with.
       ...(custom ? [] : [{name:'가상 미래 가격 (주입 전)', values:joined(steps.map(s => s.original_price)), color:'var(--muted)', dash:true, width:1.4}]),
-      {name:'예측값 (4주 뒤 예측을 예측한 주에 표시)', values:atTarget, color:'var(--amber)', width:1.8}], {labels:dates, marks:retrainIdx.map(i => i+off), markName:'파인튜닝', bands}))}
+      {name:'예측값 (4주 전에 낸 예측)', values:atTarget, color:'var(--amber)', width:1.8}], {labels:dates, marks:retrainIdx.map(i => i+off), markName:'파인튜닝', bands}))}
     <div class="grid-two">
       ${panel('주별 판정', `${chart([{name:'경보 단계 (0 일반 · 1 감시 · 2 파인튜닝)', values:steps.map(s => s.level), color:`var(--${color})`, dots:true, width:1.4}], {height:150, labels:steps.map(s => s.date), marks:retrainIdx, markName:'파인튜닝'})}${levelTable}`)}
       ${panel('판정 기준', `${definition('1단계 (감시)', '입력 분포 경보(2회 연속) 또는 13건 WAPE &gt; 경계 2회 연속')}${definition('2단계 (파인튜닝)', `13건 WAPE &gt; 경계가 ${RULE.retrain}회 연속`)}${definition('파인튜닝 후', '게이트 3개 통과 시 자동 승격')}<p class="note">일회성 충격은 몇 주 뒤 경계 안으로 돌아와 감시에서 멈추고, 체제 변화는 오차가 계속 남아 파인튜닝까지 갑니다.</p>`)}
