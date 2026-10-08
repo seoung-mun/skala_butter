@@ -62,8 +62,6 @@ const GATE_HEADERS = ['WAPE (파인튜닝은 최근 13주)', 'RMSE/평균가', '
 // vs_champion: same validation weeks scored by the model that was serving when this one was trained.
 const champ = g => { const c = g?.checks?.find(x => x.name === 'vs_champion'); if (!c) return '첫 모델'; if (c.applicable === false) return `${badge('비교 불가', 'amber')} 새 주 ${c.weeks}주`; const strict = c.op === '<'; return `${badge(c.passed ? (strict ? '더 나음' : '같거나 나음') : (strict ? '나아지지 않음' : '더 나쁨'), c.passed ? 'green' : 'red')} ${escape(c.champion)} ${pct(c.champion_value)}`; };
 const gateCells = g => [pct(g?.value), pct(check(g, 'rmse_pct')), pct(check(g, 'direction'), 1), champ(g)];
-// Same weeks as the gate WAPE, predicted as "price stays where it is" (no model).
-const naiveCell = m => { const n = m.comparisons?.validation?.naive?.wape?.value; if (n === undefined || n === null) return '—'; const better = m.gate?.value < n; return `${badge(better ? '이김' : '못 이김', better ? 'green' : 'red')} 단순 ${pct(n)}`; };
 const trainedFrom = base => base ? `파인튜닝 ← ${escape(base)}` : '처음부터';
 
 function activeModel(d) { return d.models.models.find(m => m.version === d.models.active); }
@@ -150,15 +148,15 @@ function model(d) {
   const deployed = new Set(d.models.deployments.map(x => x.version));
   // Promotion is automatic on gate pass; the only manual action left is rolling back to a previously served model.
   // The newest gate-passed model is promoted automatically; any other gate-passed one can be chosen here.
-  const candidates = models.length ? table(['모델', '출처', '학습 방식', ...GATE_HEADERS, '단순 예측 대비', '게이트', ''], models.map(m => [
+  const candidates = models.length ? table(['모델', '출처', '학습 방식', ...GATE_HEADERS, '게이트', ''], models.map(m => [
     `${escape(m.version)} ${m.version === active ? badge('운영','blue') : ''}`,
     m.from_experiment ? badge(`실험 · ${KIND_LABEL[m.experiment_kind] || m.experiment_kind}`, 'amber') : '직접 학습',
     m.from_experiment ? `파인튜닝 ← 실험 내 ${escape(m.warm_start_from)}` : trainedFrom(m.warm_start_from),  // base lives in the experiment, not here
-    ...gateCells(m.gate), naiveCell(m),
+    ...gateCells(m.gate),
     m.gate ? badge(m.gate.passed ? '통과 · 자동 배포' : '탈락', m.gate.passed ? 'green' : 'red') : badge('구버전'),
     m.version !== active && m.gate?.passed ? `<button data-select="${escape(m.version)}" class="secondary">${deployed.has(m.version) ? '다시 운영' : '운영 선택'}</button>` : ''])) : empty('학습된 모델 없음');
   const preds = d.predictions.length ? table(['발행', '목표일', '모델', '예측가'], d.predictions.slice(-8).reverse().map(p => [escape(day(p.issued_at)), escape(p.target_date), escape(p.version), `<b>${price(p.prediction)}</b>`])) : empty('예측 기록 없음');
-  return `${panel('모델 (LSTM)', `<p class="note">게이트: 검증 WAPE ≤ 6% · RMSE/평균가 ≤ 8% · 방향 정확도 ≥ 60%, 그리고 같은 검증 구간에서 운영 모델보다 나쁘지 않아야 자동 배포. '단순 예측 대비'는 같은 구간을 \"4주 뒤에도 지금 가격 그대로\"로 찍었을 때의 WAPE와 비교한 참고값(게이트 조건 아님). 교체 직후 실제 서빙 경로로 한 번 더 확인하고, 이상하면 이전 모델로 자동 롤백. 드리프트 실험에서 파인튜닝·승격된 모델도 여기로 들어오고(실험 표시), 게이트를 통과한 모델은 언제든 운영으로 고를 수 있습니다.</p>${candidates}`, `<button data-action="train" ${state.job ? 'disabled' : ''}>학습 실행</button>`)}
+  return `${panel('모델 (LSTM)', `<p class="note">게이트: 검증 WAPE ≤ 6% · RMSE/평균가 ≤ 8% · 방향 정확도 ≥ 60%, 그리고 같은 검증 구간에서 운영 모델보다 나쁘지 않아야 자동 배포. 교체 직후 실제 서빙 경로로 한 번 더 확인하고, 이상하면 이전 모델로 자동 롤백. 드리프트 실험에서 파인튜닝·승격된 모델도 여기로 들어오고(실험 표시), 게이트를 통과한 모델은 언제든 운영으로 고를 수 있습니다.</p>${candidates}`, `<button data-action="train" ${state.job ? 'disabled' : ''}>학습 실행</button>`)}
     ${panel('예측 기록', preds, `<button data-action="predict" ${active ? '' : 'disabled'}>예측 실행</button>`)}`;
 }
 

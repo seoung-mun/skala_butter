@@ -21,9 +21,7 @@ def test_log_return_bundle_roundtrip_gate_and_warm_start(tmp_path):
     base = tmp_path/"models"/"base"
     metadata = train_bundle(rows, base, epochs=3, synthetic=True, interval_days=7)
     assert metadata["feature_schema"] == FEATURES and metadata["mlflow_run_id"]
-    assert set(metadata["comparisons"]["test"]) == {"lstm", "naive"}
-    naive = metadata["comparisons"]["test"]["naive"]
-    assert naive["wape"]["value"] > 0 and naive["direction"]["value"] is None
+    assert set(metadata["comparisons"]["test"]) == {"lstm"}
     checks = {c["name"]: c for c in metadata["gate"]["checks"]}
     assert set(checks) == {"wape", "rmse_pct", "direction"}
     assert checks["direction"]["op"] == ">=" and 0 <= checks["direction"]["value"] <= 100

@@ -212,11 +212,7 @@ def train_bundle(rows, folder: Path, epochs=20, synthetic=False, interval_days=1
         scores["rmse_pct"] = metric(scores["rmse"]["value"]/float(actual.mean())*100, "%", len(actual))
         # Did the forecast call the 4-week move (up/down) right, measured from the last known price?
         scores["direction"] = metric(float(np.mean(np.sign(p_lstm-last) == np.sign(actual-last))*100), "%", len(actual))
-        # Baseline "4 weeks from now = last known price": the model must earn its keep against it.
-        naive = accuracy(actual, last, unit=unit)
-        naive["rmse_pct"] = metric(naive["rmse"]["value"]/float(actual.mean())*100, "%", len(actual))
-        naive["direction"] = metric(None, "%", len(actual), "undefined", "가격 그대로 예측은 방향이 없음")
-        comparisons[partition] = {"lstm": scores, "naive": naive}
+        comparisons[partition] = {"lstm": scores}
         predictions[partition] = [dict(s, prediction=float(p_lstm[i])) for i, s in enumerate(records)]
     decision = finetune_gate(comparisons) if finetune else gate(comparisons)
     # The weights that will serve, and the last label they saw (champion comparisons only use later weeks).
@@ -288,8 +284,8 @@ def track(folder: Path, metadata):
         for record in metadata["learning_history"]:
             mlflow.log_metrics({"train_mse": record["train_mse"], "validation_mse": record["validation_mse"]},
                                step=record["epoch"])
-        mlflow.log_metrics({f"{part}_{name}_{key}": scores[key]["value"]
-                            for part, by_model in metadata["comparisons"].items() for name, scores in by_model.items()
+        mlflow.log_metrics({f"{part}_lstm_{key}": scores[key]["value"]
+                            for part, by_model in metadata["comparisons"].items() for scores in by_model.values()
                             for key in ("rmse", "wape", "rmse_pct", "direction") if scores[key]["value"] is not None})
         mlflow.set_tag("gate", "passed" if metadata["gate"]["passed"] else "failed")
         mlflow.log_artifacts(str(folder), artifact_path="bundle")
