@@ -8,3 +8,7 @@ project/
 *.md
 .DS_store/
 *.png
+# Only the buttercast project goes into this repository
+.DS_Store
+mlflow.db
+butter-data-audit/
