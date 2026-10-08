@@ -233,11 +233,18 @@ function drift(d) {
     ${driftResult(current)}`;
 }
 
+// Severity drives the colour: failures/rollbacks red, warnings amber, passes/promotions green, the rest neutral.
+const SEVERITY = {ERROR:'error', FAIL:'error', ROLLBACK:'error', 'GATE FAILED':'error', WARN:'warn', OK:'ok', 'GATE PASSED':'ok', INFO:'info'};
+const SEVERITY_LABEL = [['error', '오류·롤백'], ['warn', '경고'], ['ok', '통과·승격'], ['info', '정보']];
 function logView(lines) {
   if (!lines?.length) return empty('로그 없음');
-  const level = line => (line.match(/\[(WARN|ERROR|FAIL|ROLLBACK|OK|GATE PASSED|GATE FAILED|INFO)\]/) || [])[1] || 'INFO';
-  const color = {WARN:'amber', ERROR:'red', FAIL:'red', ROLLBACK:'red', 'GATE FAILED':'red', OK:'green', 'GATE PASSED':'green'};
-  return `<div class="log">${lines.slice(-200).reverse().map(line => `<div class="log-line ${color[level(line)] || ''}"><time>${escape(line.slice(11, 19))}</time>${escape(line.slice(33))}</div>`).join('')}</div>`;
+  const rows = lines.slice(-200).reverse().map(line => {
+    const [, tag = 'INFO', message = line.slice(33)] = line.slice(33).match(/^\[([A-Z ]+)\]\s*(.*)$/) || [];
+    return {time: line.slice(11, 19), tag, message, sev: SEVERITY[tag] || 'info'};
+  });
+  const count = sev => rows.filter(r => r.sev === sev).length;
+  const legend = `<div class="log-legend">${SEVERITY_LABEL.map(([sev, label]) => `<span class="log-tag sev-${sev}">● ${label} ${count(sev)}</span>`).join('')}</div>`;
+  return `<div class="log">${legend}${rows.map(r => `<div class="log-line sev-${r.sev}"><time>${escape(r.time)}</time><span class="log-tag sev-${r.sev}">${escape(r.tag)}</span><span class="log-msg">${escape(r.message)}</span></div>`).join('')}</div>`;
 }
 
 function ops(d) {
