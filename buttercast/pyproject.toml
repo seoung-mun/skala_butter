@@ -1,0 +1,26 @@
+[project]
+name = "buttercast"
+version = "0.1.0"
+description = "Butter price forecasting with an AIOps loop (serving, MLOps, drift → retrain)"
+requires-python = ">=3.11,<3.14"
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "numpy>=1.26,<3", "scipy>=1.12,<2", "psutil>=6,<8", "python-multipart>=0.0.20"]
+
+[project.optional-dependencies]
+ml = ["tensorflow>=2.18,<2.22", "mlflow>=3,<4"]
+dev = ["pytest>=8,<10", "httpx>=0.27,<1", "ruff>=0.9"]
+
+[tool.setuptools]
+# Explicit: runtime/, data/, docs/ next to the package must not be auto-discovered as packages.
+packages = ["buttercast"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-m 'not ml and not e2e'"
+markers = ["ml: real TensorFlow LSTM training and user scenarios (slow; run with -m ml)", "e2e: real uvicorn process driven over HTTP (slowest; run with -m e2e)"]
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

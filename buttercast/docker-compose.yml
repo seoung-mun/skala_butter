@@ -1,0 +1,24 @@
+# Two containers on one shared store: the API serves and monitors, the worker trains and runs experiments.
+#   docker compose up --build        → http://127.0.0.1:8091
+services:
+  api:
+    build: .
+    image: buttercast:latest
+    ports:
+      - "${PORT:-8091}:7860"
+    environment:
+      LOADING_MODE: ${LOADING_MODE:-lazy}
+      JOB_RUNNER: worker
+    volumes:
+      - runtime:/app/runtime
+  worker:
+    image: buttercast:latest
+    depends_on: [api]
+    command: ["python", "-m", "buttercast.worker"]
+    environment:
+      JOB_RUNNER: worker
+    volumes:
+      - runtime:/app/runtime
+
+volumes:
+  runtime:

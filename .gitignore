@@ -1,0 +1,10 @@
+.venv/
+.vscode/
+exa-results/
+fastapi_practice/
+mlflow/
+project/
+
+*.md
+.DS_store/
+*.png

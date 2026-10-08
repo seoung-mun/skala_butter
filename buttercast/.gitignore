@@ -1,0 +1,16 @@
+# Environments and caches
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.DS_Store
+
+# Runtime state (CSV store, trained bundles, MLflow DB) is recreated by the app
+runtime/
+mlruns/
+mlartifacts/
+*.db
+
+# Submission zip built by scripts/package.sh
+dist/

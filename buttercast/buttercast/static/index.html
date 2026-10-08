@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ButterCast — 버터 가격 AIOps</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header>
+    <a class="brand" href="#dashboard"><span class="logo">b<span>↗</span></span><span>ButterCast<small>BUTTER PRICE AIOPS</small></span></a>
+    <nav aria-label="주 메뉴">
+      <button data-tab="dashboard">대시보드</button><button data-tab="model">모델</button><button data-tab="drift">시뮬레이션</button><button data-tab="ops">로그·데이터</button><button data-tab="system">시스템</button>
+    </nav>
+    <div class="header-status"><span class="dot" id="status-dot"></span><span id="status-text">연결 중</span><span id="clock"></span></div>
+  </header>
+  <main>
+    <div id="connection" class="banner danger" role="alert" hidden></div>
+    <div class="page-heading"><div><div class="eyebrow" id="eyebrow"></div><h1 id="title"></h1><p id="description"></p></div><div class="heading-actions"><button id="refresh" class="secondary">↻ 새로고침</button></div></div>
+    <div id="content" aria-live="polite"><div class="empty">불러오는 중…</div></div>
+    <footer><span id="updated"></span></footer>
+  </main>
+  <div id="toast" role="status" hidden></div>
+</body>
+</html>

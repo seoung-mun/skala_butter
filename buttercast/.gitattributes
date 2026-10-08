@@ -1,0 +1,5 @@
+# Kept in git for the team, left out of the submission zip (git archive): documents and screenshots.
+*.md export-ignore
+docs/ export-ignore
+.github/ export-ignore
+.gitattributes export-ignore
