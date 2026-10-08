@@ -325,8 +325,8 @@ function driftResult(r, d) {
   const changedIdx = steps.map((s, i) => s.phase === 'changed' ? i+off : -1).filter(i => i >= 0);
   const bands = changedIdx.length ? [[changedIdx[0], changedIdx.at(-1)]] : [];
   return `${summary}${driftView(r, d)}${advice}
-    ${panel(`과거 실제 가격과 가상 미래 가격 (${escape(r.steps[0].date)}부터 가상) · ${escape(EXPERIMENT_LABEL[r.kind] || r.kind)}`, chart([
-      {name:'과거 실제 가격', values:[...past.map(row => row.midpoint), ...steps.map(() => NaN)], color:'#8b9b8a', width:2},
+    ${panel(`실제 가격과 가상 미래 가격 (${escape(r.steps[0].date)}부터 가상) · ${escape(EXPERIMENT_LABEL[r.kind] || r.kind)}`, chart([
+      {name:'실제 가격', values:[...past.map(row => row.midpoint), ...steps.map(() => NaN)], color:'#8b9b8a', width:2},
       {name:custom ? '가상 미래 가격 (넣은 값)' : '가상 미래 가격 (주입 후)', values:joined(steps.map(s => s.price))},
       // The built-in situations inject into a generated future; typed prices have no "before" to compare with.
       ...(custom ? [] : [{name:'가상 미래 가격 (주입 전)', values:joined(steps.map(s => s.original_price)), color:'var(--muted)', dash:true, width:1.4}]),
