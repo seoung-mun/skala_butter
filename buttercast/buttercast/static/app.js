@@ -17,7 +17,7 @@ const definition = (name, value) => `<div class="definition"><span>${escape(name
 const JOB = {queued:['대기','amber'], running:['실행 중','amber'], succeeded:['완료','green'], failed:['실패','red'], cancelled:['취소','']};
 const KIND_LABEL = {none:'정상 입력', level_ramp:'이상 입력 (파인튜닝 X)', variance:'이상 입력 (파인튜닝)'};
 const KIND_NOTE = {none:'평소와 같은 변동', level_ramp:'4주에 걸쳐 가격 +15% 후 유지 — 일시적 충격', variance:'주간 변동폭 3배 — 지속적인 체제 변화'};
-const LEVEL = [['0 일반', 'green'], ['1 감시', 'amber'], ['2 파인튜닝', 'red']];
+const LEVEL = [['0단계 (일반)', 'green'], ['1단계 (감시)', 'amber'], ['2단계 (파인튜닝)', 'red']];
 
 async function api(path, options={}) {
   const response = await fetch(`/api${path}`, options);
@@ -182,20 +182,20 @@ function driftResult(r) {
   const b = r.business, cost = k => num(b[k].total_cost, 0);
   const [label, color] = LEVEL[r.observed_level], matched = r.observed_level === r.expected_level;
   const summary = `<div class="kpis four">${
-    kpi('판정', `<span class="${matched ? '' : 'bad'}">${escape(label)}</span>`, '', `기대 ${escape(LEVEL[r.expected_level][0])} · ${matched ? '일치' : '불일치'}`)}${
+    kpi('최고 경보 단계', `<span class="${matched ? '' : 'bad'}">${escape(label)}</span>`, '', `기대 ${escape(LEVEL[r.expected_level][0])} · ${matched ? '일치' : '불일치'}`)}${
     kpi('감지 지연', r.detection_delay_observations ?? '—', '주', r.kind === 'none' ? '주입 없음' : '주입 시작 → 첫 경보')}${
     kpi('파인튜닝', r.retraining.length, '회', `승격 ${r.retraining.filter(t => t.promoted).length}회`)}${
     kpi('운영 WAPE', `${num(r.scores.fixed.wape.value, 2)} → ${num(r.scores.adaptive.wape.value, 2)}`, '%', '고정 모델 → 재학습 운영')}${
     ''}</div>`;
-  const weeks = r.level_weeks, levelTable = table(['구간', '0 일반', '1 감시', '2 파인튜닝'], [['정상 13주', 'normal'], ['주입 26주', 'changed'], ['복귀', 'recovery']].map(([name, k]) => [name, ...weeks[k].map(n => `${n}주`)]));
+  const weeks = r.level_weeks, levelTable = table(['구간', '0단계 (일반)', '1단계 (감시)', '2단계 (파인튜닝)'], [['정상 13주', 'normal'], ['주입 26주', 'changed'], ['복귀', 'recovery']].map(([name, k]) => [name, ...weeks[k].map(n => `${n}주`)]));
   return `${summary}
     ${panel(`가상 미래 가격 (${escape(r.steps[0].date)}~) · ${escape(KIND_LABEL[r.kind] || r.kind)}`, chart([
       {name:'입력 가격 (주입 포함)', values:steps.map(s => s.price)},
       {name:'원본 가격', values:steps.map(s => s.original_price), color:'var(--muted)', dash:true, width:1.6},
       {name:'재학습 운영 예측', values:steps.map(s => s.adaptive), color:'var(--amber)', width:1.8}], {labels:steps.map(s => s.date), marks:retrainIdx, markName:'파인튜닝'}))}
     <div class="grid-two">
-      ${panel('주별 판정', `${chart([{name:'단계 (0 일반 · 1 감시 · 2 파인튜닝)', values:steps.map(s => s.level), color:`var(--${color})`, dots:true, width:1.4}], {height:150, labels:steps.map(s => s.date), marks:retrainIdx, markName:'파인튜닝'})}${levelTable}`)}
-      ${panel('판정 기준', `${definition('1 감시', '입력 분포 경보(2회 연속) 또는 13건 WAPE &gt; 경계 2회 연속')}${definition('2 파인튜닝', `13건 WAPE &gt; 경계가 ${RULE.retrain}회 연속`)}${definition('파인튜닝 후', '게이트 3개 통과 시 자동 승격')}<p class="note">일회성 충격은 몇 주 뒤 경계 안으로 돌아와 감시에서 멈추고, 체제 변화는 오차가 계속 남아 파인튜닝까지 갑니다.</p>`)}
+      ${panel('주별 판정', `${chart([{name:'경보 단계 (0 일반 · 1 감시 · 2 파인튜닝)', values:steps.map(s => s.level), color:`var(--${color})`, dots:true, width:1.4}], {height:150, labels:steps.map(s => s.date), marks:retrainIdx, markName:'파인튜닝'})}${levelTable}`)}
+      ${panel('판정 기준', `${definition('1단계 (감시)', '입력 분포 경보(2회 연속) 또는 13건 WAPE &gt; 경계 2회 연속')}${definition('2단계 (파인튜닝)', `13건 WAPE &gt; 경계가 ${RULE.retrain}회 연속`)}${definition('파인튜닝 후', '게이트 3개 통과 시 자동 승격')}<p class="note">일회성 충격은 몇 주 뒤 경계 안으로 돌아와 감시에서 멈추고, 체제 변화는 오차가 계속 남아 파인튜닝까지 갑니다.</p>`)}
     </div>
     ${panel('실험 모델 (경보 → 파인튜닝 → 게이트)', experimentModels(r))}
     <div class="grid-two">
@@ -255,7 +255,7 @@ function system(d) {
   return `<div class="grid-two">
     ${card('처음 학습 게이트', [['검증 WAPE', `≤ ${g.max_wape_percent}%`], ['RMSE ÷ 검증 평균가', `≤ ${g.max_rmse_percent}%`], ['4주 방향 정확도', `≥ ${g.min_direction_percent}%`], ['운영 모델 대비 WAPE', `≤ ${g.max_wape_vs_champion}배`]], g.reason)}
     ${card('파인튜닝 게이트 (경보로 시작한 재학습)', [['학습 창', `최근 ${f.window_weeks}주`], ['판정 구간', `학습에 안 쓴 최근 ${f.holdout_weeks}주`], ['학습', `${f.epochs} epoch · lr ${f.learning_rate}`], ['운영 모델 대비', 'WAPE가 더 낮아야 (같으면 탈락)'], ['상한선', `WAPE ≤ ${f.max_wape_percent}%`]], f.reason)}
-    ${card('감시 단계', [['1 감시', `입력 분포 경보 또는 성능 조건 ${m.warn_consecutive}회 연속`], ['2 파인튜닝', `성능 조건 ${m.retrain_consecutive}회 연속`], ['재학습 간격', '91일 쿨다운 · 같은 트리거 중복 차단']], m.reason)}
+    ${card('감시 단계', [['1단계 (감시)', `입력 분포 경보 또는 성능 조건 ${m.warn_consecutive}회 연속`], ['2단계 (파인튜닝)', `성능 조건 ${m.retrain_consecutive}회 연속`], ['재학습 간격', '91일 쿨다운 · 같은 트리거 중복 차단']], m.reason)}
     ${card('서비스 지표 경보', [['집계 창', `${sv.window_seconds/60}분`], ['평균 지연시간', `> ${sv.max_mean_latency_ms}ms`], ['에러율 (5xx)', `> ${sv.max_error_rate_pct}%`], ['판정 최소 요청', `${sv.min_requests}건`]], sv.reason)}
     ${card('교체 직후 확인 → 자동 롤백', [['추론 지연', `≤ ${pd.max_latency_ms}ms`], ['직전 모델 대비 예측 변화', `≤ ${pd.max_change_pct}%`]], pd.reason)}
     ${card('한국 수입원가 환산', [['EU 변화 반영 비율 β', k.passthrough_beta], ['반영 시차', `약 ${k.lag_months}개월`]], k.reason)}
