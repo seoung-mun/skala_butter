@@ -9,6 +9,7 @@ if [ -n "$(git status --porcelain -- .)" ]; then
 fi
 mkdir -p dist
 # Only this project's folder, even when the git repository root is a parent folder.
-git archive --format=zip --prefix=buttercast/ -o dist/buttercast.zip "HEAD:$(git rev-parse --show-prefix)"
+# Run from the repository root: from a subfolder, git archive narrows the tree to that subfolder a second time.
+git -C "$(git rev-parse --show-toplevel)" archive --format=zip --prefix=buttercast/ -o "$PWD/dist/buttercast.zip" "HEAD:$(git rev-parse --show-prefix)"
 echo "dist/buttercast.zip"
 unzip -l dist/buttercast.zip | tail -1
